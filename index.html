@@ -171,40 +171,53 @@ function resetBalloon(status) {
   bl.x = W / 2; bl.y = H * 0.54;
   bl.vx = 0; bl.vy = 0; bl.alpha = 1;
   bl.color = nextColor(); bl.status = status;
-  setHint(status === 'mine'    ? 'Swipe UP to toss! 🎈' :
+  setHint(status === 'mine'    ? 'Tap or swipe UP to toss! 🎈' :
           status === 'waiting' ? 'Waiting for the balloon... 👀' : '');
 }
 
 // ─── Touch / Mouse ─────────────────────────────────────────────────────────
-const drag = { active:false, x:0, y:0, hist:[] };
+const drag = { active:false, startX:0, startY:0, x:0, y:0, t:0 };
 
 function onDown(x, y) {
-  getAC(); // unlock audio context
-  drag.active = true; drag.x = x; drag.y = y;
-  drag.hist = [{ x, y, t: performance.now() }];
+  getAC();
+  drag.active = true;
+  drag.startX = drag.x = x;
+  drag.startY = drag.y = y;
+  drag.t = performance.now();
+
+  // Catch on touchstart — much more responsive than waiting for touchend
+  if (bl.status === 'incoming' && bl.y > 0) {
+    catchBalloon();
+    drag.active = false;
+  }
 }
+
 function onMove(x, y) {
   if (!drag.active) return;
   drag.x = x; drag.y = y;
-  drag.hist.push({ x, y, t: performance.now() });
-  if (drag.hist.length > 10) drag.hist.shift();
-  if (bl.status === 'mine') { bl.x = x; bl.y = y; }
 }
+
 function onUp(x, y) {
   if (!drag.active) return;
   drag.active = false;
-  if (bl.status === 'mine') {
-    const h = drag.hist;
-    if (h.length >= 2) {
-      const dt = (h[h.length-1].t - h[0].t) || 16;
-      const vx = (h[h.length-1].x - h[0].x) / dt * 16;
-      const vy = (h[h.length-1].y - h[0].y) / dt * 16;
-      if (vy < -5) { launchBalloon(vx, vy); return; }
-    }
-    bl.x = W / 2; bl.y = H * 0.54; // snap back
-  } else if (bl.status === 'incoming') {
-    const dx = x - bl.x, dy = y - bl.y;
-    if (Math.hypot(dx, dy) < bl.r * 2.2) catchBalloon();
+
+  if (bl.status !== 'mine') return;
+
+  const dx = x - drag.startX;
+  const dy = y - drag.startY;
+  const dt = Math.max(performance.now() - drag.t, 8);
+  const dist = Math.hypot(dx, dy);
+
+  // Any upward swipe OR a simple tap — both launch the balloon
+  const isSwipeUp = dy < -18;
+  const isTap     = dist < 30 && dt < 350;
+
+  if (isSwipeUp || isTap) {
+    // Derive velocity from swipe; clamp so it always goes up with good speed
+    const rawVx = dx / dt * 14;
+    const rawVy = dy / dt * 14;
+    const launchVy = Math.min(rawVy, -12); // always at least -12 upward
+    launchBalloon(rawVx, launchVy);
   }
 }
 
@@ -390,7 +403,8 @@ function loop(ts) {
       break;
     }
     case 'incoming': {
-      bl.vy += 0.32 * dt;
+      bl.vy += 0.14 * dt;
+      bl.vy = Math.min(bl.vy, 8);
       bl.x += bl.vx * dt; bl.y += bl.vy * dt;
       if (bl.x < bl.r) { bl.x = bl.r; bl.vx = Math.abs(bl.vx) * 0.5; }
       if (bl.x > W - bl.r) { bl.x = W - bl.r; bl.vx = -Math.abs(bl.vx) * 0.5; }
