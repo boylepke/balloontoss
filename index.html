@@ -143,8 +143,12 @@ function onMessage(raw) {
   try { msg = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch(e) { return; }
   switch (msg.type) {
     case 'launch': receiveBalloon(msg); break;
-    case 'catch':  theirScore = msg.score; updateHUD(); break;
-    case 'drop':   resetBalloon('mine'); break;
+    case 'missed':
+      myScore++;
+      updateHUD();
+      spawnBurst(W / 2, H * 0.7, '#ffd93d', 18);
+      resetBalloon('mine');
+      break;
   }
 }
 
@@ -171,7 +175,7 @@ function resetBalloon(status) {
   bl.x = W / 2; bl.y = H * 0.54;
   bl.vx = 0; bl.vy = 0; bl.alpha = 1;
   bl.color = nextColor(); bl.status = status;
-  setHint(status === 'mine'    ? 'Tap or swipe UP to toss! 🎈' :
+  setHint(status === 'mine'    ? 'Tap or swipe UP to serve! 🎈' :
           status === 'waiting' ? 'Waiting for the balloon... 👀' : '');
 }
 
@@ -187,7 +191,7 @@ function onDown(x, y) {
 
   // Catch on touchstart — much more responsive than waiting for touchend
   if (bl.status === 'incoming' && bl.y > 0) {
-    catchBalloon();
+    returnBalloon(x);
     drag.active = false;
   }
 }
@@ -234,13 +238,15 @@ function launchBalloon(vx, vy) {
   playWhoosh(); setHint('');
 }
 
-function catchBalloon() {
-  myScore++;
+function returnBalloon(tapX) {
+  // Tap position steers the return: left tap = drifts left, right tap = right
+  const steer = ((tapX ?? W / 2) / W - 0.5) * 12;
+  bl.vx = steer;
+  bl.vy = -(13 + Math.random() * 3);
+  bl.status = 'launching';
   playCatch();
-  spawnBurst(bl.x, bl.y, bl.color, 22);
-  send({ type:'catch', score: myScore });
-  resetBalloon('mine');
-  updateHUD();
+  spawnBurst(bl.x, bl.y, bl.color, 14);
+  setHint('');
 }
 
 function receiveBalloon(msg) {
@@ -250,7 +256,7 @@ function receiveBalloon(msg) {
   bl.vx = -(msg.vx || 0) * 0.18;
   bl.vy = 2.5 + Math.random() * 1.5;
   bl.status = 'incoming'; bl.alpha = 1;
-  setHint('Tap the balloon! 🎈');
+  setHint('Tap to return it! 🎈');
 }
 
 // ─── Particles ──────────────────────────────────────────────────────────────
@@ -425,12 +431,12 @@ function loop(ts) {
       }
       if (bl.y > H + bl.r * 2) {
         playMiss();
-        send({ type:'drop' });
+        send({ type:'missed' });
         theirScore++;
         spawnBurst(bl.x, H - 40, '#ff6b6b', 12);
         bl.status = 'waiting'; bl.alpha = 1;
         updateHUD();
-        setHint('Waiting... 👀');
+        setHint('You missed... 😅 They serve next');
       }
       break;
     }
