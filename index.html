@@ -288,11 +288,14 @@ function receiveBalloon(msg) {
 
 function catchBalloon(tapX) {
   playCatch();
-  bl.status='watching';
-  setHint('Nice hit! 🎈');
-  // Tapping the balloon IS the return — host immediately routes to next player
-  if (isHost) { hostHandleAction(myId, {type:'hit'}); }
-  else         { joinSend({type:'hit'}); }
+  // Steer based on where on the balloon you tapped
+  const steer = ((tapX - bl.x) / bl.r) * 6;
+  bl.vx = steer;
+  bl.vy = -(12 + Math.random() * 3);
+  bl.alpha = 1;
+  bl.isReturn = true;
+  bl.status = 'launching';
+  setHint('');
 }
 
 // ════════════════════════════════════════════════════════
@@ -364,13 +367,15 @@ function loop(ts) {
     case 'launching': {
       bl.x+=bl.vx*dt; bl.y+=bl.vy*dt;
       bl.alpha=Math.max(0,bl.alpha-0.05*dt);
-      drawBalloon(bl.x,bl.y,bl.r,P_COLORS[myId],bl.alpha);
+      drawBalloon(bl.x,bl.y,bl.r, bl.isReturn ? bl.color : P_COLORS[myId],bl.alpha);
       if (bl.y < -bl.r*2.5 || bl.alpha<=0.02) {
-        // Report to host
-        if (isHost) {
-          hostHandleAction(myId, {type:'launched'});
+        if (bl.isReturn) {
+          bl.isReturn = false;
+          if (isHost) { hostHandleAction(myId, {type:'hit'}); }
+          else         { joinSend({type:'hit'}); }
         } else {
-          joinSend({type:'launched'});
+          if (isHost) { hostHandleAction(myId, {type:'launched'}); }
+          else         { joinSend({type:'launched'}); }
         }
         bl.status='watching'; bl.alpha=1;
         setHint('Waiting...');
