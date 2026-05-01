@@ -179,6 +179,7 @@ function hostBroadcast(msg, except) {
 // Host receives action from a player
 function hostHandleAction(fromId, msg) {
   switch(msg.type) {
+    case 'hit':
     case 'launched': {
       if (fromId !== holder) break;
       lastThrower = fromId;
@@ -186,10 +187,11 @@ function hostHandleAction(fromId, msg) {
       for (let i=0;i<playerCount;i++) if(i!==fromId) targets.push(i);
       const target = targets[Math.floor(Math.random()*targets.length)];
       holder = target;
-      const color   = nextColor();
-      const df      = 0.03 + Math.random()*0.05;
-      const da      = 1    + Math.random()*3;
-      const initVx  = (Math.random()-0.5)*8;
+      // 'launched' = fresh serve → new color; 'hit' = rally → keep color
+      const color  = msg.type==='launched' ? nextColor() : bl.color;
+      const df     = 0.03 + Math.random()*0.05;
+      const da     = 1    + Math.random()*3;
+      const initVx = (Math.random()-0.5)*8;
       hostSendTo(target, {type:'incoming', color, driftFreq:df, driftAmp:da, initVx});
       for (let i=0;i<playerCount;i++) {
         if(i!==target) hostSendTo(i, {type:'watching', holderId:target});
@@ -221,8 +223,7 @@ function onMyMsg(msg) {
       break;
     case 'watching':
       bl.status = 'watching';
-      const hn = P_NAMES[msg.holderId];
-      setHint('🎈 ' + hn + ' has the balloon!');
+      setHint('🎈 Going to ' + P_NAMES[msg.holderId] + '!');
       break;
     case 'scored':
       scores = msg.scores;
@@ -288,7 +289,11 @@ function receiveBalloon(msg) {
 function catchBalloon(tapX) {
   playCatch();
   spawnBurst(bl.x,bl.y,bl.color,16);
-  resetBalloon('mine');
+  bl.status='watching';
+  setHint('Nice hit! 🎈');
+  // Tapping the balloon IS the return — host immediately routes to next player
+  if (isHost) { hostHandleAction(myId, {type:'hit'}); }
+  else         { joinSend({type:'hit'}); }
 }
 
 // ════════════════════════════════════════════════════════
